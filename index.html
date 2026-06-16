@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Baptism Invitation</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    
+    <style>
+        #canvas-container {
+            width: 100%;
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 0;
+            touch-action: none; /* Prevents screen scrolling when using the D-pad */
+        }
+        
+        .fade-transition {
+            transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+        }
+        
+        .dpad-btn {
+            transition: transform 0.1s ease-in-out, background-color 0.1s;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .dpad-btn:active {
+            transform: scale(0.90);
+            background-color: #166534;
+        }
+    </style>
+</head>
+<body class="overflow-hidden font-sans bg-green-50">
+
+    <div id="canvas-container"></div>
+
+    <div class="relative z-10 h-screen flex flex-col justify-between pb-8 px-6 pt-16 pointer-events-none">
+        
+        <div id="info-card" class="fade-transition opacity-100 transform translate-y-0 bg-white/95 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-green-200 text-center max-w-sm mx-auto w-full pointer-events-auto">
+            <h1 id="card-title" class="text-2xl font-serif text-green-900 mb-2">Welcome!</h1>
+            <p id="card-text" class="text-gray-700 text-base">
+                Explore the playground. Find the floating markers to unlock the details of my holy baptism!
+            </p>
+        </div>
+
+        <div class="flex flex-col items-center gap-2 pointer-events-auto pb-6">
+            <button id="btn-up" class="dpad-btn w-16 h-16 bg-green-600 rounded-full text-white text-2xl flex items-center justify-center shadow-lg focus:outline-none">▲</button>
+            <div class="flex gap-12">
+                <button id="btn-left" class="dpad-btn w-16 h-16 bg-green-600 rounded-full text-white text-2xl flex items-center justify-center shadow-lg focus:outline-none">◀</button>
+                <button id="btn-down" class="dpad-btn w-16 h-16 bg-green-600 rounded-full text-white text-2xl flex items-center justify-center shadow-lg focus:outline-none">▼</button>
+                <button id="btn-right" class="dpad-btn w-16 h-16 bg-green-600 rounded-full text-white text-2xl flex items-center justify-center shadow-lg focus:outline-none">▶</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        // --- 1. Define Goals and Invitation Data ---
+        const invitationGoals = [
+            { 
+                id: 'dress-code', 
+                x: 0, z: -5,  
+                color: 0x34d399, 
+                title: "Dress Code 👗", 
+                text: "Please join us wearing pastel colors, preferably light green or white.",
+                collected: false
+            },
+            { 
+                id: 'time-venue', 
+                x: -6, z: -8, 
+                color: 0x60a5fa, 
+                title: "Time & Venue ⛪", 
+                text: "St. Jude Parish Church\nSaturday, October 14th at 10:00 AM.",
+                collected: false
+            },
+            { 
+                id: 'reception', 
+                x: 6, z: -10, 
+                color: 0xfbbf24, 
+                title: "The Reception 🍽️", 
+                text: "Lunch will be served immediately after the ceremony at The Grand Garden Restaurant.",
+                collected: false
+            },
+            { 
+                id: 'gifts', 
+                x: 0, z: -15, 
+                color: 0xf472b6, 
+                title: "Gifts 🎁", 
+                text: "Your presence is the greatest gift! However, if you wish to bless us, monetary gifts are deeply appreciated.",
+                collected: false
+            }
+        ];
+
+        // --- 2. UI Elements ---
+        const infoCard = document.getElementById('info-card');
+        const cardTitle = document.getElementById('card-title');
+        const cardText = document.getElementById('card-text');
+
+        // --- 3. Three.js Core Setup ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#f0fdf4');
+        scene.fog = new THREE.Fog('#f0fdf4', 10, 30); 
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(5, 10, 5);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        // --- 4. Load Models and Build Goals ---
+        const loader = new GLTFLoader();
+        let babyModel, mixer, walkAction;
+        const cameraOffset = new THREE.Vector3(0, 3, 8); 
+        const goalMeshes = [];
+
+        loader.load('playground.glb', (gltf) => {
+            scene.add(gltf.scene);
+        });
+
+        loader.load('baby.glb', (gltf) => {
+            babyModel = gltf.scene;
+            
+            // Starting Position
+            babyModel.position.set(0, 0, 11);
+            
+            scene.add(babyModel);
+            
+            if (gltf.animations && gltf.animations.length > 0) {
+                mixer = new THREE.AnimationMixer(babyModel);
+                walkAction = mixer.clipAction(gltf.animations[0]); 
+            }
+            updateCameraPosition();
+        });
+
+        invitationGoals.forEach(goal => {
+            const geometry = new THREE.OctahedronGeometry(0.5);
+            const material = new THREE.MeshStandardMaterial({ 
+                color: goal.color, 
+                roughness: 0.2, 
+                metalness: 0.8,
+                emissive: goal.color,
+                emissiveIntensity: 0.2
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            
+            mesh.position.set(goal.x, 1, goal.z); 
+            mesh.castShadow = true;
+            scene.add(mesh);
+            
+            goal.mesh = mesh; 
+        });
+
+        // --- 5. Continuous Input State ---
+        const moveState = { forward: false, backward: false, left: false, right: false };
+        const characterSpeed = 4.0; 
+
+        const setupButton = (id, direction) => {
+            const btn = document.getElementById(id);
+            btn.addEventListener('pointerdown', (e) => { e.preventDefault(); moveState[direction] = true; });
+            btn.addEventListener('pointerup', (e) => { e.preventDefault(); moveState[direction] = false; });
+            btn.addEventListener('pointerleave', (e) => { e.preventDefault(); moveState[direction] = false; });
+        };
+
+        setupButton('btn-up', 'forward');
+        setupButton('btn-down', 'backward');
+        setupButton('btn-left', 'left');
+        setupButton('btn-right', 'right');
+
+        // --- 6. Helper Functions ---
+        function updateCameraPosition() {
+            if (!babyModel) return;
+            const targetCamPos = babyModel.position.clone().add(cameraOffset);
+            camera.position.lerp(targetCamPos, 0.1);
+            camera.lookAt(babyModel.position.x, babyModel.position.y + 1, babyModel.position.z);
+        }
+
+        function triggerGoal(goal) {
+            goal.collected = true;
+            goal.mesh.visible = false; 
+
+            infoCard.classList.remove('opacity-100', 'translate-y-0');
+            infoCard.classList.add('opacity-0', '-translate-y-4');
+
+            setTimeout(() => {
+                cardTitle.innerText = goal.title;
+                cardText.innerText = goal.text;
+                
+                infoCard.classList.remove('opacity-0', '-translate-y-4');
+                infoCard.classList.add('opacity-100', 'translate-y-0');
+            }, 300);
+
+            const allCollected = invitationGoals.every(g => g.collected);
+            if (allCollected) {
+                setTimeout(() => {
+                    cardTitle.innerText = "We can't wait!";
+                    cardText.innerText = "You've found all the details. See you there!";
+                }, 5000); 
+            }
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- 7. Main Game Loop ---
+        const clock = new THREE.Clock();
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            if (babyModel) {
+                const moveVector = new THREE.Vector3();
+                
+                if (moveState.forward) moveVector.z -= 1;
+                if (moveState.backward) moveVector.z += 1;
+                if (moveState.left) moveVector.x -= 1;
+                if (moveState.right) moveVector.x += 1;
+
+                if (moveVector.lengthSq() > 0) {
+                    moveVector.normalize();
+                    
+                    // Move the model
+                    babyModel.position.addScaledVector(moveVector, characterSpeed * delta);
+                    
+                    // --- NEW: Apply Boundaries (Invisible Walls) ---
+                    const boundaryLimit = 15; 
+                    
+                    // Math.max and Math.min clamp the coordinates so they never exceed +15 or drop below -15
+                    babyModel.position.x = Math.max(-boundaryLimit, Math.min(boundaryLimit, babyModel.position.x));
+                    babyModel.position.z = Math.max(-boundaryLimit, Math.min(boundaryLimit, babyModel.position.z));
+
+                    // Smoothly rotate the character
+                    const targetAngle = Math.atan2(moveVector.x, moveVector.z);
+                    const targetQuaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), targetAngle);
+                    babyModel.quaternion.slerp(targetQuaternion, 10 * delta);
+
+                    if (walkAction && !walkAction.isRunning()) {
+                        walkAction.play();
+                    }
+                } else {
+                    if (walkAction && walkAction.isRunning()) {
+                        walkAction.stop();
+                    }
+                }
+
+                updateCameraPosition();
+
+                // Collision Detection Logic
+                invitationGoals.forEach(goal => {
+                    if (!goal.collected) {
+                        goal.mesh.rotation.y += delta;
+                        goal.mesh.position.y = 1 + Math.sin(clock.getElapsedTime() * 2) * 0.2;
+
+                        const distance = babyModel.position.distanceTo(goal.mesh.position);
+                        if (distance < 1.5) { 
+                            triggerGoal(goal);
+                        }
+                    }
+                });
+            }
+
+            if (mixer) mixer.update(delta);
+            renderer.render(scene, camera);
+        }
+        
+        animate();
+    </script>
+</body>
+</html>
